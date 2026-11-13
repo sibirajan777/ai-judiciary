@@ -202,7 +202,7 @@ def format_verdict_section(
 
     if v1 == v2:
         # Both runs agreed on the same real side!
-        print_header("JUDGE'S VERDICT : UNANIMOUS CONSENSUS", width, icon="🏛️")
+        print_header("JUDGE'S VERDICT : BOTH PANELS AGREE", width, icon="🏛️")
         print("  Note: Evaluated across two independent, blinded judge runs:")
         print("    • Panel 1 : Evaluated with Side A = Advocate (PRO), Side B = Opposer (CON)")
         print("    • Panel 2 : Evaluated with Side A = Opposer (CON), Side B = Advocate (PRO) [Labels Swapped]")
@@ -222,6 +222,18 @@ def format_verdict_section(
             k: (r1_con.get(k, 0) + r2_con.get(k, 0)) / 2.0
             for k in ("evidence", "logic", "relevance")
         }
+
+        # Calculate average total score gap and margin of victory
+        pro_total = sum(avg_pro_scores.values())
+        con_total = sum(avg_con_scores.values())
+        score_gap = abs(pro_total - con_total)
+
+        if score_gap < 4.0:
+            margin = "Narrow"
+        elif score_gap < 10.0:
+            margin = "Clear"
+        else:
+            margin = "Decisive"
 
         # Average Scorecard Table
         format_scores_table(
@@ -250,11 +262,13 @@ def format_verdict_section(
             print(f"    • Step 3: Dual Judge Panels : Total {timings.get('step3_total', 0.0):.2f}s (Panel 1: {timings.get('judge_panel1', 0.0):.2f}s, Panel 2: {timings.get('judge_panel2', 0.0):.2f}s)")
             print(f"    • Total Deliberation Time   : {timings.get('total', 0.0):.2f}s\n")
 
-        # Consensus Verdict Badge
+        # Consensus Verdict Badge with Margin line
         box_w = width - 4
         print("  " + "═" * box_w)
         verdict_str = f"🏆 FINAL VERDICT: {label_for_verdict(v1)}"
         print(f"  {verdict_str.center(box_w)}")
+        margin_line = f"Margin: {margin}"
+        print(f"  {margin_line.center(box_w)}")
         print("  " + "═" * box_w + "\n")
 
         # Judicial opinions
