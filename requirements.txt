@@ -1,0 +1,8 @@
+# ai-judiciary dependencies
+
+# LLM Providers (New Google GenAI SDK and Anthropic Claude)
+google-genai>=1.0.0
+anthropic>=0.40.0
+
+# Environment Management
+python-dotenv>=1.0.0
