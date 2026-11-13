@@ -19,7 +19,10 @@ import os
 import time
 import shutil
 import textwrap
-from typing import Dict, Any, Optional, Tuple, Callable
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, Any, Optional, Tuple, Callable, List
 from agents import AdvocateAgent, OpposerAgent, RebuttalAgent, JudgeAgent
 
 
@@ -346,8 +349,9 @@ def run_timed_task(task_fn: Callable, *args) -> Tuple[Any, float]:
     return result, duration
 
 
-def run_debate(claim: str):
-    """Executes the courtroom debate pipeline sequentially to protect free-tier rate limits."""
+def run_debate(claim: str) -> Dict[str, Any]:
+    """Executes the courtroom debate pipeline sequentially to protect free-tier rate limits.
+    Returns a dictionary containing all debate data for persistence."""
     width = get_terminal_width()
     print_banner(width)
 
@@ -522,10 +526,85 @@ def run_debate(claim: str):
         width=width,
         timings=timings,
     )
+    
+    # Return all data for persistence
+    return {
+        "pro_arguments": pro_arguments,
+        "con_arguments": con_arguments,
+        "pro_rebuttal": pro_rebuttal,
+        "con_rebuttal": con_rebuttal,
+        "judge_run1": run1,
+        "judge_run2": run2,
+        "timings": timings,
+    }
+
+
+def validate_configuration() -> bool:
+    """Validate that required configuration is present before starting."""
+    from llm import _load_env_file
+    _load_env_file()
+    
+    provider = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
+    
+    if provider in ("gemini", "google"):
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if not api_key or api_key == "your_gemini_api_key_here":
+            print("  [ERROR] GEMINI_API_KEY not configured. Set it in .env file.")
+            return False
+    elif provider in ("claude", "anthropic"):
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key or api_key == "your_anthropic_api_key_here":
+            print("  [ERROR] ANTHROPIC_API_KEY not configured. Set it in .env file.")
+            return False
+    elif provider in ("nvidia", "nim", "openrouter"):
+        api_key = os.getenv("NVIDIA_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+        if not api_key or api_key == "nvapi-your-key":
+            print("  [ERROR] NVIDIA_API_KEY not configured. Set it in .env file.")
+            return False
+    else:
+        print(f"  [ERROR] Unknown LLM_PROVIDER: {provider}")
+        return False
+    
+    return True
+
+
+def save_debate_result(claim: str, result: Dict[str, Any], timings: Dict[str, float], width: int):
+    """Save debate result to a JSON file in results/ directory."""
+    results_dir = Path(__file__).parent / "results"
+    results_dir.mkdir(exist_ok=True)
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_claim = "".join(c if c.isalnum() or c in " -_" else "_" for c in claim[:50])
+    filename = f"{timestamp}_{safe_claim}.json"
+    filepath = results_dir / filename
+    
+    data = {
+        "claim": claim,
+        "timestamp": datetime.now().isoformat(),
+        "timings": timings,
+        "pro_arguments": result.get("pro_arguments", []),
+        "con_arguments": result.get("con_arguments", []),
+        "pro_rebuttal": result.get("pro_rebuttal", {}),
+        "con_rebuttal": result.get("con_rebuttal", {}),
+        "judge_run1": result.get("judge_run1", {}),
+        "judge_run2": result.get("judge_run2", {}),
+    }
+    
+    try:
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        print(f"\n  [SAVED] Debate result saved to: {filepath}")
+    except Exception as e:
+        print(f"\n  [WARNING] Could not save debate result: {e}")
 
 
 def main():
     """Main CLI entrypoint."""
+    # Validate configuration first
+    if not validate_configuration():
+        print("  Please copy .env.example to .env and add your API key.")
+        sys.exit(1)
+    
     # Check for claim passed as CLI argument
     if len(sys.argv) > 1:
         # Join arguments in case user passed unquoted string
@@ -547,7 +626,8 @@ def main():
     # Strip redundant outer quotes if entered
     claim = claim.strip().strip("'\"").strip()
 
-    run_debate(claim)
+    result = run_debate(claim)
+    save_debate_result(claim, result, result.get("timings", {}), get_terminal_width())
 
 
 if __name__ == "__main__":

@@ -5,5 +5,28 @@ google-genai>=1.0.0
 anthropic>=0.40.0
 openai>=1.0.0
 
+# Async HTTP client for parallel LLM calls
+aiohttp>=3.9.0
+
+# Web UI
+streamlit>=1.30.0
+
+# URL fetching and parsing
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+
+# PDF Export
+fpdf2>=2.7.0
+
+# Image processing
+Pillow>=10.0.0
+
 # Environment Management
 python-dotenv>=1.0.0
+
+# JSON parsing (lenient JSON5 support for LLM outputs)
+json5>=0.9.0
+
+# Testing
+pytest>=7.0.0

@@ -56,13 +56,56 @@ Add your API key to `.env` (see `.env.example` for the options), then run:
 python main.py "Remote work is better than office work"
 ```
 
+## New Features
+
+### Configuration Validation
+- Validates API keys at startup before running debate
+- Clear error messages for missing or placeholder keys
+
+### Result Persistence
+- Debate results automatically saved to `results/` directory as JSON
+- Includes full debate transcript, scores, and timing data
+- Files named with timestamp and claim for easy retrieval
+
+### Configurable Timeouts
+All timeouts configurable via `.env`:
+```bash
+LLM_CONNECT_TIMEOUT=15.0      # Connection timeout (seconds)
+LLM_READ_TIMEOUT=90.0         # Read timeout (seconds)
+LLM_MAX_RETRIES=3             # Max retry attempts
+LLM_RATE_LIMIT_BACKOFF=10.0   # Base backoff for rate limits
+```
+
+### Robust JSON Parsing
+- Handles multiple code fence formats
+- Recovers from common JSON syntax errors (trailing commas, missing quotes)
+- Multiple fallback parsing strategies
+
+### Comprehensive Test Suite
+- 46 unit tests covering JSON parsing, schema validation, and configuration
+- Run with: `python -m pytest tests/ -v`
+
+### Async Support (Experimental)
+- Parallel LLM calls via `call_llm_async()` for faster execution
+- Requires `aiohttp` (included in requirements.txt)
+- Example in `examples/parallel_debate.py`
+
 ## Project structure
 
 ```
-main.py        # runs the debate flow and prints results
-agents.py      # advocate, opposer, rebuttal and judge logic
-prompts.py     # all system prompts (edit these to tune behaviour)
-llm.py         # LLM calls, retries, timeouts, rate-limit handling
+main.py              # runs the debate flow and prints results
+agents.py            # advocate, opposer, rebuttal and judge logic
+prompts.py           # all system prompts (edit these to tune behaviour)
+llm.py               # LLM calls, retries, timeouts, rate-limit handling
+tests/               # unit tests
+  test_json_parsing.py
+  test_main.py
+  test_llm_config.py
+  conftest.py
+examples/            # usage examples
+  parallel_debate.py
+results/             # saved debate results (auto-created)
+pytest.ini           # test configuration
 ```
 
 ## Built with
