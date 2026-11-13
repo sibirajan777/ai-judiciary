@@ -20,18 +20,17 @@
    - 120s timeout per call               - 120s timeout per call
              |                                     |
              +------------------+------------------+
-                                |  (Parallel Step 1)
+                                |  (Sequential Step 1 - Rate-Limit Safe)
                                 v
                        [Rebuttal Round]
        - Advocate counters Opposer's strongest point
        - Opposer counters Advocate's strongest point
-                                |  (Parallel Step 2)
+                                |  (Sequential Step 2 - Rate-Limit Safe)
                                 v
                [Dual-Panel Label-Swapped Adjudication]
        - Panel 1: Evaluated with Side A = Pro, Side B = Con
        - Panel 2: Evaluated with Side A = Con, Side B = Pro (Swapped)
-       - Both runs executed concurrently in parallel
-                                |  (Parallel Step 3)
+                                |  (Sequential Step 3 - Rate-Limit Safe)
                                 v
                [Consensus Check & Decision Synthesis]
        - If both panels agree: Final verdict with average scores
@@ -39,20 +38,19 @@
 ```
 
 1. **Claim Submission**: The user enters a controversial claim or motion (e.g., *"AI should be allowed in exams"*).
-2. **Advocate Agent (PRO)**: Presents exactly 3 grounded, persuasive arguments strictly in favor (executed in parallel with Opposer).
-3. **Opposer Agent (CON)**: Presents exactly 3 grounded, persuasive arguments strictly against (executed in parallel with Advocate).
-4. **Rebuttal Round**: Both sides inspect the opponent's case and formulate targeted rebuttals against each other's strongest point in parallel.
-5. **Dual Parallel Judge Verification**: The debate transcript is submitted in parallel to two independent judge evaluations—one with normal labels (Side A = Pro, Side B = Con) and one with swapped labels (Side A = Con, Side B = Pro). If both runs agree on the real side (Pro, Con, or Draw), that is declared the final verdict with averaged scores. If they disagree, the debate is ruled a *"Split decision: too close to call"* with both rulings displayed in full detail.
+2. **Advocate Agent (PRO)**: Formulates exactly 3 grounded, persuasive arguments strictly in favor.
+3. **Opposer Agent (CON)**: Formulates exactly 3 grounded, persuasive arguments strictly against (executed sequentially to preserve free-tier rate limits).
+4. **Rebuttal Round**: Both sides inspect the opponent's case and formulate targeted rebuttals against each other's strongest point sequentially.
+5. **Dual Judge Verification**: The debate transcript is submitted sequentially to two independent judge evaluations—one with normal labels (Side A = Pro, Side B = Con) and one with swapped labels (Side A = Con, Side B = Pro). If both runs agree on the real side (Pro, Con, or Draw), that is declared the final verdict with averaged scores. If they disagree, the debate is ruled a *"Split decision: too close to call"* with both rulings displayed in full detail.
 
 ---
 
 ## 🛡️ Anti-Bias & Reliability Guarantees
 
-* **Dual-Panel Position Permutation Testing**: LLMs can suffer from positional and affirmative bias (e.g., favoring the first-listed side). Running dual parallel judge calls with inverted labels (Side A/B swapped) guarantees that a verdict is only awarded when robust against framing effects. Disagreements automatically produce an honest "Split decision: too close to call".
-* **Individual 120s Call Timeout**: Timeout is strictly enforced per individual LLM call (120 seconds), not as an arbitrary premature step cutoff.
-* **Intelligent Rate Limit (HTTP 429) Handling**: When concurrency thresholds or rate limits are encountered, calls pause with exponential backoff and randomized jitter before retrying up to 3 times per model.
-* **Transparent Diagnostics**: Failures surface the real underlying error (HTTP status code, attempt count, model) instead of generic timeout messages.
-* **Fine-Grained Execution Timing**: Displays individual call durations (e.g., Advocate vs Opposer) as well as total round elapsed times.
+* **Sequential Free-Tier Safety**: Agent calls run sequentially to prevent burst concurrency limits on Google AI Studio free tier keys.
+* **Dual-Panel Position Permutation Testing**: Running dual judge calls with inverted labels (Side A/B swapped) guarantees that a verdict is only awarded when robust against position bias. Disagreements automatically produce an honest "Split decision: too close to call".
+* **Clean Configuration**: Thinking config and unsupported parameters are removed to prevent HTTP 400 `INVALID_ARGUMENT` errors. The exact request config is logged before each call.
+* **Capped Retries & 10-30s Backoff**: Retries are strictly capped at 3 per call. On HTTP 429 (Rate Limit / Quota Exhaustion), execution pauses with a 10 to 30-second backoff before retrying. HTTP 400 errors are never retried and fail fast with clear diagnostic info.
 * **Strict JSON Enforcement**: All agents communicate in raw, schema-validated JSON with code-fence stripping and corrective auto-retries.
 * **No Fabricated Facts**: Prompts explicitly prohibit inventing statistics, phantom studies, or fake citations.
 
@@ -62,10 +60,10 @@
 
 | File | Purpose |
 | :--- | :--- |
-| `main.py` | CLI entry point, concurrent thread pool orchestrator, and formatted terminal renderer with call timings. |
+| `main.py` | CLI entry point, sequential rate-limit-safe orchestrator, and formatted terminal renderer with call timings. |
 | `agents.py` | Agent role logic (`AdvocateAgent`, `OpposerAgent`, `RebuttalAgent`, `JudgeAgent`), JSON validation, and blinding mechanism. |
 | `prompts.py` | Named constants for all system prompts (`ADVOCATE_SYSTEM_PROMPT`, `OPPOSER_SYSTEM_PROMPT`, `REBUTTAL_SYSTEM_PROMPT`, `JUDGE_SYSTEM_PROMPT`). |
-| `llm.py` | Unified LLM caller with 120s per-call timeout, HTTP 429 retry backoff, thinking disabled, and multi-model fallback. |
+| `llm.py` | Unified LLM caller with request config logging, 120s timeout, capped 3 retries, 10-30s backoff for 429, and immediate 400 failure. |
 | `requirements.txt`| Python dependencies (`google-genai`, `anthropic`, `python-dotenv`). |
 | `.env.example` | Template for configuring API keys and provider selection. |
 | `README.md` | Documentation, setup guide, and example claims. |
@@ -82,14 +80,12 @@ Ensure you have Python 3.9+ installed.
 cd d:\ai-judiciary
 ```
 
-### 3. Create a Virtual Environment (Recommended)
+### 3. Activate Virtual Environment
 ```bash
 # Windows
-python -m venv venv
 .\venv\Scripts\activate
 
 # macOS / Linux
-python3 -m venv venv
 source venv/bin/activate
 ```
 
@@ -99,45 +95,23 @@ pip install -r requirements.txt
 ```
 
 ### 5. Configure API Keys
-Copy `.env.example` to `.env`:
-```bash
-# Windows (PowerShell)
-Copy-Item .env.example .env
-
-# macOS / Linux
-cp .env.example .env
-```
-
-Open `.env` in any text editor and set your preferred provider:
-
-#### For Google Gemini (Default):
+Verify `.env` has your valid API key and model:
 ```env
 LLM_PROVIDER=gemini
 GEMINI_API_KEY=your_actual_gemini_api_key_here
 GEMINI_MODEL=gemini-3.8-flash
 ```
-*(Get a key from [Google AI Studio](https://aistudio.google.com/))*
-
-#### For Anthropic Claude:
-```env
-LLM_PROVIDER=claude
-ANTHROPIC_API_KEY=your_actual_anthropic_api_key_here
-CLAUDE_MODEL=claude-3-5-sonnet-20241022
-```
-*(Get a key from [Anthropic Console](https://console.anthropic.com/))*
 
 ---
 
 ## 🎮 Running the Application
 
 ### Interactive Mode
-Run the script without arguments to be prompted for a claim:
 ```bash
 python main.py
 ```
 
 ### Direct Argument Mode
-Pass the claim directly as a command-line argument:
 ```bash
 python main.py "AI should be allowed in exams"
 ```
@@ -145,8 +119,6 @@ python main.py "AI should be allowed in exams"
 ---
 
 ## 🧪 3 Compelling Test Claims
-
-Try running `ai-judiciary` with these three thought-provoking claims:
 
 ### Test Claim 1: Education & Technology
 > **`"AI should be allowed in university examinations."`**
@@ -175,9 +147,15 @@ Try running `ai-judiciary` with these three thought-provoking claims:
   CASE TOPIC : "AI should be allowed in university examinations."
   STATUS     : Proceedings initialized. All agents summoned to court.
 
-  [1/3] ⚖️ Formulating Opening Arguments (in parallel)... DONE (Advocate: 8.42s, Opposer: 11.15s | Step: 11.15s)
-  [2/3] ⚔️ Commencing Rebuttal Round (both sides in parallel)... DONE (Advocate: 5.20s, Opposer: 6.10s | Step: 6.12s)
-  [3/3] 🏛️ Submitting to Dual Judge Panels in parallel (with swapped labels)... DONE (Panel 1: 9.35s, Panel 2: 8.90s | Step: 9.36s)
+  [1/3] ⚖️ Formulating Opening Arguments (Sequential to respect rate limits)...
+        ► Advocate Agent (PRO)... DONE (7.42s)
+        ► Opposer Agent (CON)... DONE (8.15s)
+  [2/3] ⚔️ Commencing Rebuttal Round (Sequential)...
+        ► Advocate (PRO) Rebuttal... DONE (5.20s)
+        ► Opposer (CON) Rebuttal... DONE (6.10s)
+  [3/3] 🏛️ Submitting to Dual Judge Panels (Sequential with swapped labels)...
+        ► Judge Panel 1 (Side A = PRO, Side B = CON)... DONE (9.35s)
+        ► Judge Panel 2 (Side A = CON, Side B = PRO [Swapped])... DONE (8.90s)
 
 --------------------------------------------------------------------------------
  ⚖️  PRO
@@ -199,7 +177,7 @@ Try running `ai-judiciary` with these three thought-provoking claims:
 --------------------------------------------------------------------------------
  🏛️  JUDGE'S VERDICT : UNANIMOUS CONSENSUS
 --------------------------------------------------------------------------------
-  Note: Evaluated across two independent, blinded parallel judge runs:
+  Note: Evaluated across two independent, blinded judge runs:
     • Panel 1 : Evaluated with Side A = Advocate (PRO), Side B = Opposer (CON)
     • Panel 2 : Evaluated with Side A = Opposer (CON), Side B = Advocate (PRO) [Labels Swapped]
     Both independent runs confirmed the same verdict: OPPOSER (CON) PREVAILS.
@@ -220,10 +198,10 @@ Try running `ai-judiciary` with these three thought-provoking claims:
     • Opposer's Strongest Point  : "Erosion of Core Cognitive Competencies"
 
   DELIBERATION TIMING:
-    • Opening Arguments (Parallel) : Step 11.15s (Advocate: 8.42s, Opposer: 11.15s)
-    • Rebuttals (Parallel)         : Step 6.12s (Advocate: 5.20s, Opposer: 6.10s)
-    • Dual Judge Panels (Parallel) : Step 9.36s (Panel 1: 9.35s, Panel 2: 8.90s)
-    • Total Deliberation Time      : 26.63s
+    • Step 1: Opening Arguments : Total 15.57s (Advocate: 7.42s, Opposer: 8.15s)
+    • Step 2: Rebuttals         : Total 11.30s (Advocate: 5.20s, Opposer: 6.10s)
+    • Step 3: Dual Judge Panels : Total 18.25s (Panel 1: 9.35s, Panel 2: 8.90s)
+    • Total Deliberation Time   : 45.12s
 
   ══════════════════════════════════════════════════════════════════════════════
                    🏆 FINAL VERDICT: OPPOSER (CON) PREVAILS                     

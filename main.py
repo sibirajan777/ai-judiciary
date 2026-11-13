@@ -3,10 +3,10 @@ main.py - Entry point for AI Judiciary CLI application
 
 Orchestrates the 5-step courtroom debate flow:
 1. User enters or supplies a claim.
-2. Advocate agent formulates exactly 3 arguments in favor (in parallel with Opposer).
-3. Opposer agent formulates exactly 3 arguments against (in parallel with Advocate).
-4. Rebuttal round: each side counters the other's strongest argument (in parallel).
-5. Judge agent evaluates blinded submissions across dual parallel panels (with swapped labels).
+2. Advocate agent formulates exactly 3 arguments in favor (sequential to respect rate limits).
+3. Opposer agent formulates exactly 3 arguments against (sequential to respect rate limits).
+4. Rebuttal round: each side counters the other's strongest argument (sequential).
+5. Judge agent evaluates blinded submissions across dual panels with swapped labels (sequential).
 6. Results are printed in a clean, structured terminal format with sections:
    - PRO
    - CON
@@ -19,7 +19,6 @@ import os
 import time
 import shutil
 import textwrap
-import concurrent.futures
 from typing import Dict, Any, Optional, Tuple, Callable
 from agents import AdvocateAgent, OpposerAgent, RebuttalAgent, JudgeAgent
 
@@ -184,7 +183,7 @@ def format_verdict_section(
     timings: Optional[Dict[str, float]] = None,
 ):
     """
-    Renders the final verdict based on the dual parallel judge runs.
+    Renders the final verdict based on the dual judge runs.
     - If both runs pick the same real side (Pro or Con or Draw):
       Prints that as the final verdict with the average scores.
     - If the two runs disagree:
@@ -204,7 +203,7 @@ def format_verdict_section(
     if v1 == v2:
         # Both runs agreed on the same real side!
         print_header("JUDGE'S VERDICT : UNANIMOUS CONSENSUS", width, icon="🏛️")
-        print("  Note: Evaluated across two independent, blinded parallel judge runs:")
+        print("  Note: Evaluated across two independent, blinded judge runs:")
         print("    • Panel 1 : Evaluated with Side A = Advocate (PRO), Side B = Opposer (CON)")
         print("    • Panel 2 : Evaluated with Side A = Opposer (CON), Side B = Advocate (PRO) [Labels Swapped]")
         print(f"    Both independent runs confirmed the same verdict: {label_for_verdict(v1)}.\n")
@@ -246,10 +245,10 @@ def format_verdict_section(
         # Timing breakdown if available
         if timings:
             print("  DELIBERATION TIMING:")
-            print(f"    • Opening Arguments (Parallel) : Step {timings.get('step1_total', 0.0):.2f}s (Advocate: {timings.get('adv_open', 0.0):.2f}s, Opposer: {timings.get('opp_open', 0.0):.2f}s)")
-            print(f"    • Rebuttals (Parallel)         : Step {timings.get('step2_total', 0.0):.2f}s (Advocate: {timings.get('adv_reb', 0.0):.2f}s, Opposer: {timings.get('opp_reb', 0.0):.2f}s)")
-            print(f"    • Dual Judge Panels (Parallel) : Step {timings.get('step3_total', 0.0):.2f}s (Panel 1: {timings.get('judge_panel1', 0.0):.2f}s, Panel 2: {timings.get('judge_panel2', 0.0):.2f}s)")
-            print(f"    • Total Deliberation Time      : {timings.get('total', 0.0):.2f}s\n")
+            print(f"    • Step 1: Opening Arguments : Total {timings.get('step1_total', 0.0):.2f}s (Advocate: {timings.get('adv_open', 0.0):.2f}s, Opposer: {timings.get('opp_open', 0.0):.2f}s)")
+            print(f"    • Step 2: Rebuttals         : Total {timings.get('step2_total', 0.0):.2f}s (Advocate: {timings.get('adv_reb', 0.0):.2f}s, Opposer: {timings.get('opp_reb', 0.0):.2f}s)")
+            print(f"    • Step 3: Dual Judge Panels : Total {timings.get('step3_total', 0.0):.2f}s (Panel 1: {timings.get('judge_panel1', 0.0):.2f}s, Panel 2: {timings.get('judge_panel2', 0.0):.2f}s)")
+            print(f"    • Total Deliberation Time   : {timings.get('total', 0.0):.2f}s\n")
 
         # Consensus Verdict Badge
         box_w = width - 4
@@ -271,7 +270,7 @@ def format_verdict_section(
     else:
         # Disagreement between the two runs!
         print_header("JUDGE'S VERDICT : SPLIT DECISION", width, icon="⚖️")
-        print("  Note: Evaluated across two independent, blinded parallel judge runs with swapped labels:")
+        print("  Note: Evaluated across two independent, blinded judge runs with swapped labels:")
         print(f"    • Panel 1 (Side A = PRO, Side B = CON) : Ruled '{label_for_verdict(v1)}'")
         print(f"    • Panel 2 (Side A = CON, Side B = PRO) : Ruled '{label_for_verdict(v2)}'")
         print("  When the presentation order was flipped, the two runs reached conflicting conclusions.\n")
@@ -286,10 +285,10 @@ def format_verdict_section(
         # Timing breakdown if available
         if timings:
             print("  DELIBERATION TIMING:")
-            print(f"    • Opening Arguments (Parallel) : Step {timings.get('step1_total', 0.0):.2f}s (Advocate: {timings.get('adv_open', 0.0):.2f}s, Opposer: {timings.get('opp_open', 0.0):.2f}s)")
-            print(f"    • Rebuttals (Parallel)         : Step {timings.get('step2_total', 0.0):.2f}s (Advocate: {timings.get('adv_reb', 0.0):.2f}s, Opposer: {timings.get('opp_reb', 0.0):.2f}s)")
-            print(f"    • Dual Judge Panels (Parallel) : Step {timings.get('step3_total', 0.0):.2f}s (Panel 1: {timings.get('judge_panel1', 0.0):.2f}s, Panel 2: {timings.get('judge_panel2', 0.0):.2f}s)")
-            print(f"    • Total Deliberation Time      : {timings.get('total', 0.0):.2f}s\n")
+            print(f"    • Step 1: Opening Arguments : Total {timings.get('step1_total', 0.0):.2f}s (Advocate: {timings.get('adv_open', 0.0):.2f}s, Opposer: {timings.get('opp_open', 0.0):.2f}s)")
+            print(f"    • Step 2: Rebuttals         : Total {timings.get('step2_total', 0.0):.2f}s (Advocate: {timings.get('adv_reb', 0.0):.2f}s, Opposer: {timings.get('opp_reb', 0.0):.2f}s)")
+            print(f"    • Step 3: Dual Judge Panels : Total {timings.get('step3_total', 0.0):.2f}s (Panel 1: {timings.get('judge_panel1', 0.0):.2f}s, Panel 2: {timings.get('judge_panel2', 0.0):.2f}s)")
+            print(f"    • Total Deliberation Time   : {timings.get('total', 0.0):.2f}s\n")
 
         # Show Both Rulings
         print("  " + "─" * (width - 4))
@@ -333,48 +332,8 @@ def run_timed_task(task_fn: Callable, *args) -> Tuple[Any, float]:
     return result, duration
 
 
-def run_parallel_tasks(tasks: Dict[str, Tuple[Callable, tuple]]) -> Tuple[Dict[str, Any], Dict[str, float]]:
-    """
-    Runs tasks concurrently using ThreadPoolExecutor.
-    Does NOT enforce a premature step timeout: allows each individual LLM call's
-    internal 120-second timeout to govern network deadlines.
-    Returns (results_dict, durations_dict).
-    If any task fails, collects and prints the real underlying error (HTTP status, retry count).
-    """
-    futures = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(tasks)) as executor:
-        for name, (fn, args) in tasks.items():
-            futures[name] = executor.submit(run_timed_task, fn, *args)
-
-        results = {}
-        durations = {}
-        errors = {}
-
-        for name, fut in futures.items():
-            try:
-                # No premature step timeout - let individual 120s LLM timeouts manage socket deadlines
-                res, dur = fut.result()
-                results[name] = res
-                durations[name] = dur
-            except Exception as exc:
-                errors[name] = exc
-
-        if errors:
-            print(" FAILED\n")
-            print("  " + "=" * 68)
-            print("  [!] JUDICIAL PROCEEDINGS HALTED: AGENT CALL FAILURE")
-            print("  " + "=" * 68)
-            for name, exc in errors.items():
-                print(f"\n  • Agent Role : {name}")
-                print(f"    Underlying Error : {exc}")
-            print("\n  " + "=" * 68 + "\n")
-            sys.exit(1)
-
-        return results, durations
-
-
 def run_debate(claim: str):
-    """Executes the full courtroom debate pipeline with parallel execution."""
+    """Executes the courtroom debate pipeline sequentially to protect free-tier rate limits."""
     width = get_terminal_width()
     print_banner(width)
 
@@ -385,71 +344,128 @@ def run_debate(claim: str):
 
     total_start = time.perf_counter()
 
-    # Step 1: Advocate and Opposer opening calls in parallel
-    print("  [1/3] ⚖️ Formulating Opening Arguments (in parallel)... ", end="", flush=True)
-    t0_open = time.perf_counter()
-    tasks_step1 = {
-        "Advocate": (AdvocateAgent.argue, (claim,)),
-        "Opposer": (OpposerAgent.argue, (claim,)),
-    }
-    results_step1, durations_step1 = run_parallel_tasks(tasks_step1)
-    t_open = time.perf_counter() - t0_open
+    # Step 1: Advocate and Opposer opening arguments (Sequential to respect rate limits)
+    print("  [1/3] ⚖️ Formulating Opening Arguments (Sequential to respect rate limits)...")
 
-    pro_case = results_step1["Advocate"]
-    con_case = results_step1["Opposer"]
-    t_adv = durations_step1["Advocate"]
-    t_opp = durations_step1["Opposer"]
+    # 1a. Advocate opening arguments
+    print("        ► Advocate Agent (PRO)... ", end="", flush=True)
+    try:
+        pro_case, t_adv = run_timed_task(AdvocateAgent.argue, claim)
+        print(f"DONE ({t_adv:.2f}s)")
+    except Exception as exc:
+        print("FAILED\n")
+        print("  " + "=" * 68)
+        print("  [!] JUDICIAL PROCEEDINGS HALTED: ADVOCATE AGENT CALL FAILURE")
+        print("  " + "=" * 68)
+        print(f"  • Underlying Error : {exc}\n")
+        sys.exit(1)
 
-    print(f"DONE (Advocate: {t_adv:.2f}s, Opposer: {t_opp:.2f}s | Step: {t_open:.2f}s)")
+    # 1b. Opposer opening arguments
+    print("        ► Opposer Agent (CON)... ", end="", flush=True)
+    try:
+        con_case, t_opp = run_timed_task(OpposerAgent.argue, claim)
+        print(f"DONE ({t_opp:.2f}s)")
+    except Exception as exc:
+        print("FAILED\n")
+        print("  " + "=" * 68)
+        print("  [!] JUDICIAL PROCEEDINGS HALTED: OPPOSER AGENT CALL FAILURE")
+        print("  " + "=" * 68)
+        print(f"  • Underlying Error : {exc}\n")
+        sys.exit(1)
 
+    t_open = t_adv + t_opp
     pro_arguments = pro_case.get("arguments", [])
     con_arguments = con_case.get("arguments", [])
 
-    # Step 2: Two rebuttals in parallel
-    print("  [2/3] ⚔️ Commencing Rebuttal Round (both sides in parallel)... ", end="", flush=True)
-    t0_reb = time.perf_counter()
-    tasks_step2 = {
-        "Advocate": (
+    # Step 2: Rebuttal Round (Sequential)
+    print("  [2/3] ⚔️ Commencing Rebuttal Round (Sequential)...")
+
+    # 2a. Advocate rebuttal
+    print("        ► Advocate (PRO) Rebuttal... ", end="", flush=True)
+    try:
+        pro_rebuttal, t_adv_reb = run_timed_task(
             RebuttalAgent.rebut,
-            ("Advocate", claim, "in favor", con_arguments),
-        ),
-        "Opposer": (
+            "Advocate",
+            claim,
+            "in favor",
+            con_arguments,
+        )
+        print(f"DONE ({t_adv_reb:.2f}s)")
+    except Exception as exc:
+        print("FAILED\n")
+        print("  " + "=" * 68)
+        print("  [!] JUDICIAL PROCEEDINGS HALTED: ADVOCATE REBUTTAL FAILURE")
+        print("  " + "=" * 68)
+        print(f"  • Underlying Error : {exc}\n")
+        sys.exit(1)
+
+    # 2b. Opposer rebuttal
+    print("        ► Opposer (CON) Rebuttal... ", end="", flush=True)
+    try:
+        con_rebuttal, t_opp_reb = run_timed_task(
             RebuttalAgent.rebut,
-            ("Opposer", claim, "against", pro_arguments),
-        ),
-    }
-    results_step2, durations_step2 = run_parallel_tasks(tasks_step2)
-    t_reb = time.perf_counter() - t0_reb
+            "Opposer",
+            claim,
+            "against",
+            pro_arguments,
+        )
+        print(f"DONE ({t_opp_reb:.2f}s)")
+    except Exception as exc:
+        print("FAILED\n")
+        print("  " + "=" * 68)
+        print("  [!] JUDICIAL PROCEEDINGS HALTED: OPPOSER REBUTTAL FAILURE")
+        print("  " + "=" * 68)
+        print(f"  • Underlying Error : {exc}\n")
+        sys.exit(1)
 
-    pro_rebuttal = results_step2["Advocate"]
-    con_rebuttal = results_step2["Opposer"]
-    t_adv_reb = durations_step2["Advocate"]
-    t_opp_reb = durations_step2["Opposer"]
+    t_reb = t_adv_reb + t_opp_reb
 
-    print(f"DONE (Advocate: {t_adv_reb:.2f}s, Opposer: {t_opp_reb:.2f}s | Step: {t_reb:.2f}s)")
+    # Step 3: Presiding Judge evaluation (Dual sequential panels with swapped labels)
+    print("  [3/3] 🏛️ Submitting to Dual Judge Panels (Sequential with swapped labels)...")
 
-    # Step 3: Presiding Judge evaluation (Dual parallel runs with swapped labels)
-    print("  [3/3] 🏛️ Submitting to Dual Judge Panels in parallel (with swapped labels)... ", end="", flush=True)
-    t0_judge = time.perf_counter()
-    tasks_step3 = {
-        "Panel 1": (
+    # 3a. Panel 1 (Normal labels)
+    print("        ► Judge Panel 1 (Side A = PRO, Side B = CON)... ", end="", flush=True)
+    try:
+        run1, t_j1 = run_timed_task(
             JudgeAgent.evaluate,
-            (claim, pro_arguments, con_arguments, pro_rebuttal, con_rebuttal, True),
-        ),
-        "Panel 2": (
+            claim,
+            pro_arguments,
+            con_arguments,
+            pro_rebuttal,
+            con_rebuttal,
+            True,
+        )
+        print(f"DONE ({t_j1:.2f}s)")
+    except Exception as exc:
+        print("FAILED\n")
+        print("  " + "=" * 68)
+        print("  [!] JUDICIAL PROCEEDINGS HALTED: JUDGE PANEL 1 FAILURE")
+        print("  " + "=" * 68)
+        print(f"  • Underlying Error : {exc}\n")
+        sys.exit(1)
+
+    # 3b. Panel 2 (Swapped labels)
+    print("        ► Judge Panel 2 (Side A = CON, Side B = PRO [Swapped])... ", end="", flush=True)
+    try:
+        run2, t_j2 = run_timed_task(
             JudgeAgent.evaluate,
-            (claim, pro_arguments, con_arguments, pro_rebuttal, con_rebuttal, False),
-        ),
-    }
-    results_step3, durations_step3 = run_parallel_tasks(tasks_step3)
-    t_judge = time.perf_counter() - t0_judge
+            claim,
+            pro_arguments,
+            con_arguments,
+            pro_rebuttal,
+            con_rebuttal,
+            False,
+        )
+        print(f"DONE ({t_j2:.2f}s)\n")
+    except Exception as exc:
+        print("FAILED\n")
+        print("  " + "=" * 68)
+        print("  [!] JUDICIAL PROCEEDINGS HALTED: JUDGE PANEL 2 FAILURE")
+        print("  " + "=" * 68)
+        print(f"  • Underlying Error : {exc}\n")
+        sys.exit(1)
 
-    run1 = results_step3["Panel 1"]
-    run2 = results_step3["Panel 2"]
-    t_j1 = durations_step3["Panel 1"]
-    t_j2 = durations_step3["Panel 2"]
-
-    print(f"DONE (Panel 1: {t_j1:.2f}s, Panel 2: {t_j2:.2f}s | Step: {t_judge:.2f}s)\n")
+    t_judge = t_j1 + t_j2
 
     total_time = time.perf_counter() - total_start
     timings = {
